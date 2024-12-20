@@ -594,7 +594,9 @@ source "${ZPLUGINDIR}/zsh-autosuggestions/zsh-autosuggestions.zsh"
 
 source "${ZPLUGINDIR}/fast-syntax-highlighting/fast-syntax-highlighting.plugin.zsh"
 
-source "${ZPLUGINDIR}/atuin/atuin.plugin.zsh"
+if (( ${+commands[atuin]} )) ; then
+  source "${ZPLUGINDIR}/atuin/atuin.plugin.zsh"
+fi
 
 unset RPS1
 
