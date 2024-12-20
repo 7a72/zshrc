@@ -1,5 +1,7 @@
 #!/usr/bin/env zsh
 
+# Based on https://github.com/romkatv/zsh-bench/blob/master/configs/diy++/skel/.zshrc
+
 ##### .zshrc
 
 PS1="Ready > "
@@ -12,6 +14,7 @@ RPS1="%F{240}Loading...%f"
 ZDOTDIR="${XDG_CONFIG_HOME:-$HOME/.config}/zsh"
 ZSHDDIR="${ZDOTDIR}/conf.d"
 ZDATADIR="${XDG_DATA_HOME:-$HOME/.local/share}/zsh"
+ZPLUGINDIR="${ZDATADIR}/plugins"
 ZCACHEDIR="${ZDATADIR}/cache"
 [ -d "${ZCACHEDIR}" ] || mkdir -p "${ZCACHEDIR}"
 
@@ -23,18 +26,28 @@ elif [[ $(tty) == /dev/pts/* ]] ; then
   export LANG=zh_CN.UTF-8
 fi
 
-if (($+commands[gpg])); then
+if (( ${+commands[gpg]} )); then
   export GPG_TTY=$(tty)
 fi
 
-if [[ -z ${EDITOR} ]]; then
-  for editor in hx nvim vim nano; do
-    if (($+commands[$editor])); then
-      export EDITOR="$editor"
-      # export VISUAL=$EDITOR
+if [[ -z "${EDITOR}" ]]; then
+  for _editor in helix hx nvim vim nano; do
+    if command -v "${_editor}" &> /dev/null; then
+      export EDITOR="${_editor}"
+      # export VISUAL="${EDITOR}"
       break
     fi
   done
+fi
+
+if (( ${+commands[fd]} )); then
+  export FZF_DEFAULT_COMMAND="fd --hidden --follow --exclude '.git' --exclude 'node_modules'"
+elif (( ${+commands[fdfind]} )); then
+  export FZF_DEFAULT_COMMAND="fdfind --hidden --follow --exclude '.git' --exclude 'node_modules'"
+elif (( ${+commands[rg]} )); then
+  export FZF_DEFAULT_COMMAND='rg --files --hidden --follow --glob "!{.git,node_modules}/**"'
+else
+  export FZF_DEFAULT_COMMAND='find . -type f -not \( -path "*/.git/*" -o -path "./node_modules/*" \)'
 fi
 
 #
@@ -71,17 +84,16 @@ setopt interactive_comments
 setopt no_clobber
 
 # History
-HISTFILE="${ZCACHEDIR}/zsh_history"
-HISTSIZE='16384'
-SAVEHIST='16384'
-setopt append_history
-setopt extended_history
+HISTFILE="${ZCACHEDIR}/.zsh_history"
+HISTSIZE='261120'
+SAVEHIST='261120'
+# setopt append_history
+# setopt extended_history
 setopt inc_append_history
-setopt hist_expire_dups_first
+# setopt hist_expire_dups_first
 setopt hist_ignore_all_dups
 setopt hist_ignore_space
-setopt hist_find_no_dups
-setopt hist_reduce_blanks
+# setopt hist_find_no_dups
 setopt hist_verify
 setopt share_history
 
@@ -90,10 +102,61 @@ setopt share_history
 #
 
 ############
+### Aliases
+############
+
+alias cp='cp -iv --reflink=auto'
+alias rcp='rsync -v --progress'
+alias rmv='rsync -v --progress --remove-source-files'
+alias mv='mv -iv'
+alias rm='rm -iv'
+alias rmdir='rmdir -v'
+alias ln='ln -v'
+alias chmod="chmod -c"
+alias chown="chown -c"
+alias mkdir="mkdir -v"
+alias grep='grep --colour=auto'
+alias egrep='egrep --colour=auto'
+
+if (( ${+commands[eza]} )); then
+  alias ls='command eza --color=auto --sort=Name --classify --group-directories-first --time-style=long-iso --group'
+  alias l='ls'
+  alias la='ls -a'
+  alias lh='ls --all --header --long'
+  alias ll='lh'
+else
+  alias ls='command ls -C --color=auto --human-readable --classify --group-directories-first --time-style=+%Y-%m-%d\ %H:%M --quoting-style=literal'
+  alias l='ls'
+  alias la='ls -A'
+  alias lh='la -l'
+  alias ll='lh'
+fi
+
+if (( ${+commands[fd]} )); then
+  alias fd='fd'
+elif (( ${+commands[fdfind]} )); then
+  alias fd='fdfind'
+fi
+
+if (( ${+commands[doas]} )) ; then
+  alias s="doas"
+else
+  alias s="sudo"
+fi
+
+if (( ${+commands[systemctl]} )) ; then
+  alias sdctl="systemctl"
+fi
+
+#
+### End of Aliases
+#
+
+############
 ### Prompt
 ############
 
-# Modified based on zimfw/asciiship & fff7d1bc/conf-mgmt
+# Modified based on zimfw/asciiship & fff7d1bc/conf-mgmt & ohmyzsh/ohmyzsh/blob/master/themes/fishy.zsh-theme
 termtitle() {
   case "$TERM" in
     rxvt*|xterm*|nxterm|gnome|screen|screen-*|st|st-*)
@@ -112,89 +175,128 @@ termtitle() {
   esac
 }
 
-setup_git_prompt() {
+_setup_git_prompt() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 || ! zstyle -t ':asciiship:' git-info; then
     unset git_prompt
     return 0
   fi
-
-  local git_status_stash=""
-  local git_branch=""
-  local git_status_committed=""
-  local git_status_untracked=""
-  local git_status_deleted=""
-  local git_status_modified=""
-  local git_status_renamed=""
-  local git_status_copied=""
-  local git_status_conflicted=""
-
-  local status_output
-  status_output=$(git --no-optional-locks status --porcelain)
-
-  echo "$status_output" | grep -qE '^[AM]' && git_status_committed='%F{green}*'
-  echo "$status_output" | grep -q '^??' && git_status_untracked='%F{red}U'
-  echo "$status_output" | grep -q '^ D' && git_status_deleted='%F{yellow}D'
-  echo "$status_output" | grep -q '^ M' && git_status_modified='%F{cyan}M'
-  echo "$status_output" | grep -q '^ R' && git_status_renamed='%F{magenta}R'
-  echo "$status_output" | grep -q '^ C' && git_status_copied='%F{blue}C'
-  echo "$status_output" | grep -q '^[U]' && git_status_conflicted='%F{red}!'
-  [ "$(git stash list)" ] && git_status_stash="%F{yellow}S"
-
-  git_branch=$(git branch --show-current 2>/dev/null)
-  if [ -z "$git_branch" ]; then
-    git_branch=$(git rev-parse --short HEAD 2>/dev/null)
-      if [ -z "$git_branch" ]; then
-        git_branch='^HEAD'
-      fi
+  local git_status=$(git --no-optional-locks status --porcelain=2 --branch --show-stash)
+  local git_status_prompt=""
+  if printf "${git_status}" | grep -qE '^[12] [ADRM]'; then
+    git_status_prompt+="%F{2}*" # staged changes
   fi
+  if printf "${git_status}" | grep -q '^?'; then
+    git_status_prompt+="%F{102}U" # untracked files
+  fi
+  if printf "${git_status}" | grep -qE '^[12] .D'; then
+    git_status_prompt+="%F{1}D" # deleted files
+  fi
+  if printf "${git_status}" | grep -qE '^[12] .M'; then
+    git_status_prompt+="%F{14}M" # modified files
+  fi
+  if printf "${git_status}" | grep -qE '^[12] .R'; then
+    git_status_prompt+="%F{180}R" # renamed files
+  fi
+  if printf "${git_status}" | grep -qE '^[12] .C'; then
+    git_status_prompt+="%F{189}C" # copied files
+  fi
+  if printf "${git_status}" | grep -q '^u'; then
+    git_status_prompt+="%F{99}!" # unmerged changes
+  fi
+  if printf "${git_status}" | grep -q '^# stash'; then
+    git_status_prompt+="%F{139}S" # stashed changes
+  fi
+  local git_branch
+  if printf "${git_status}" | grep -q '^# branch.head (detached)'; then
+    git_branch=$(git rev-parse --short HEAD)
+  else
+    git_branch=$(git branch --show-current)
+  fi
+  if [ -z "${git_status_prompt}" ]; then
+    git_prompt=" %F{white}on %F{blue}[%F{white}${git_branch}%F{blue}]%f"
+  else
+    git_prompt=" %F{white}on %F{blue}[%F{white}${git_branch}%F{8}:${git_status_prompt}%F{blue}]%f"
+  fi
+}
 
-  local status_string="${git_status_committed}${git_status_untracked}${git_status_deleted}${git_status_modified}${git_status_renamed}${git_status_copied}${git_status_conflicted}${git_status_stash}"
-  status_string="${status_string//:/:}"
+_get_shortened_dir() {
+  local directory_parts
+  directory_parts=("${(s:/:)PWD/#$HOME/~}")
+  if ! zstyle -t ':asciiship:' dir-short; then
+    printf "%s" "${(j:/:)directory_parts}"
+    return 0
+  fi
+  if (( $#directory_parts > 1 )); then
+    for _directory_part in {1..$(($#directory_parts-1))}; do
+      if [[ "${directory_parts[$_directory_part]}" = .* ]]; then
+        directory_parts[$_directory_part]="${${directory_parts[$_directory_part]}[1,2]}"
+      else
+        directory_parts[$_directory_part]="${${directory_parts[$_directory_part]}[1]}"
+      fi
+    done
+  fi
+  printf "%s" "${(j:/:)directory_parts}"
+}
 
-  git_prompt=" on %F{blue}[%F{253}${git_branch}${status_string:+:$status_string}%F{blue}]"
+_format_execution_time() {
+  local elapsed=$1
+  local result=""
+  local hours minutes seconds
+  if [ $elapsed -gt 3600 ]; then
+    hours=$((elapsed/3600))
+    minutes=$(((elapsed%3600)/60))
+    seconds=$((elapsed%60))
+    result="${hours}h${minutes}m${seconds}s"
+  elif [ $elapsed -gt 60 ]; then
+    minutes=$((elapsed/60))
+    seconds=$((elapsed%60))
+    result="${minutes}m${seconds}s"
+  else
+    result="${elapsed}s"
+  fi
+  printf "%s" "${result}"
+}
+
+_exectime_preexec() {
+  timer=$(($(date +%s)))
+}
+
+_exectime_precmd() {
+  if [ $timer ]; then
+    local now=$(($(date +%s)))
+    local elapsed=$((now-timer))
+    if [ $elapsed -gt 3 ]; then
+      local time_display=$(_format_execution_time $elapsed)
+      RPROMPT="%F{yellow}${time_display} %f"
+    else
+      RPROMPT=""
+    fi
+  else
+    RPROMPT=""
+  fi
+  unset timer
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec _exectime_preexec
+add-zsh-hook precmd _exectime_precmd
+
+preexec() {
+  # Set terminal title along with current executed command pass as second argument
+  termtitle preexec "${(V)1}"
 }
 
 precmd() {
   # Set terminal title.
   termtitle precmd
   # Set optional git part of prompt.
-  setup_git_prompt
-}
-preexec() {
-  # Set terminal title along with current executed command pass as second argument
-  termtitle preexec "${(V)1}"
+  _setup_git_prompt
 }
 
 typeset -g VIRTUAL_ENV_DISABLE_PROMPT=1
 
-shorten_path() {
-  local long_path="${1/#$HOME/~}"
-
-  if ! zstyle -t ':asciiship:' shorten-path; then
-    echo $long_path
-    return 0
-  fi
-
-  local path_length="${#long_path}"
-
-  if [ ${path_length} -gt 16 ]; then
-    IFS='/' read -r -A path_parts <<< "$long_path"
-    if [ ${#path_parts[@]} -le 2 ]; then
-      echo "$long_path"
-    else
-      printf "%s" "${path_parts[0]}"
-      for ((i=1; i<${#path_parts[@]}-1; i++)); do
-        printf "/%s" "${path_parts[$i]:0:1}"
-      done
-      printf "/%s\n" "${path_parts[-1]}"
-    fi
-  else
-    echo "$long_path"
-  fi
-}
-
 PROMPT='
-%(2L.%B%F{white}(%L)%f%b .)%(!.%B%F{red}%n%f%b@.${SSH_TTY:+"%B%F{blue}%n%f%b@"})${SSH_TTY:+"%B%F{blue}%m%f%b in "}%B%F{cyan}$(shorten_path "$PWD")%f%b${git_prompt}%f%b${VIRTUAL_ENV:+" via %B%F{yellow}${VIRTUAL_ENV:t}%f%b"}
+%(2L.%B%F{white}(%L)%f%b .)%(!.%B%F{red}%n%f%b@.${SSH_TTY:+"%B%F{blue}%n%f%b@"})${SSH_TTY:+"%B%F{blue}%m%f%b in "}%B%F{cyan}$(_get_shortened_dir)%f%b${git_prompt}%f%b${VIRTUAL_ENV:+" via %B%F{yellow}${VIRTUAL_ENV:t}%f%b"}
 %B%(1j.%F{blue}*%f .)%(?.%F{green}.%F{red}%? )%#%f%b '
 # RPROMPT=todo
 
@@ -203,85 +305,98 @@ PROMPT='
 #
 
 ############
-### Plugins
+### Func
 ############
 
-GH_MIRROR="https://github.com"
+## Modified based on MamoruDS/history-fuzzy-search
+# history-fuzzy-search() {
+#   local preview_extra_cmd='_fetch() { setopt extended_glob && HISTFILE='"$HISTFILE"' && fc -R && print -rNC1 -- ${(v)history[$((${(M)${*}## #<->}))]} } && _fetch {}'
+#   local fuzzy_history=$(fc -lr 0 | fzf +s +m -x --with-nth 2.. --scheme=history --layout=reverse --height=50% --preview-window='bottom:3:wrap' --preview $preview_extra_cmd --query="$BUFFER")
+#   if [ -n "$fuzzy_history" ]; then
+#     BUFFER="${fuzzy_history[@]}"
+#     zle vi-fetch-history -n $BUFFER
+#   fi
+#   zle reset-prompt
+# }
 
-function zcompile-many() {
-  local f
-  for f; do zcompile -R -- "$f".zwc "$f"; done
+## file find
+file-fuzzy-find() {
+  local fuzzy_filefind cmd keyword
+  if [[ "${BUFFER}" == *" "* ]]; then
+    cmd=${${BUFFER}[(w)1]}
+    keyword=${BUFFER#"${cmd} "}
+    fuzzy_filefind="$cmd $(eval ${FZF_DEFAULT_COMMAND} | fzf --height=50% --layout=reverse --scheme=path --query="${keyword}" +m)"
+  else
+    fuzzy_filefind="$(eval ${FZF_DEFAULT_COMMAND} | fzf --height=50% --layout=reverse --scheme=path --query="${BUFFER}" +m)"
+  fi
+  if [ -n "$fuzzy_filefind" ]; then
+    BUFFER="${fuzzy_filefind[@]}"
+  fi
+  zle end-of-line
+  zle reset-prompt
 }
 
-if [[ ! -e ${ZDATADIR}/zsh-defer ]]; then
-  mkdir -p ${ZDATADIR}/zsh-defer
-  git clone --depth=1 ${GH_MIRROR}/romkatv/zsh-defer.git ${ZDATADIR}/zsh-defer
-  zcompile-many ${ZDATADIR}/zsh-defer/zsh-defer.plugin.zsh
-fi
-source ${ZDATADIR}/zsh-defer/zsh-defer.plugin.zsh
+## sudo or doas will be inserted before the command
+sudo-command-line() {
+  local cmd
+  [[ -z ${BUFFER} ]] && zle up-history
+  if (( ${+commands[doas]} )) ; then
+    cmd="doas "
+  else
+    cmd="sudo "
+  fi
+  if [[ ${BUFFER} == ${cmd}* ]]; then
+    CURSOR=$(( CURSOR-${#cmd} ))
+    BUFFER="${BUFFER#$cmd}"
+  else
+    BUFFER="${cmd}${BUFFER}"
+    CURSOR=$(( CURSOR+${#cmd} ))
+  fi
+  zle reset-prompt
+}
 
-if [[ ! -e ${ZDATADIR}/fast-syntax-highlighting ]]; then
-  mkdir -p ${ZDATADIR}/fast-syntax-highlighting
-  git clone --depth=1 ${GH_MIRROR}/zdharma-continuum/fast-syntax-highlighting ${ZDATADIR}/fast-syntax-highlighting
-  zcompile-many ${ZDATADIR}/fast-syntax-highlighting/fast-syntax-highlighting.plugin.zsh
-fi
+## File Download
+xget() {
+  local uri="$1"
+  local save="$2"
+  if [[ -z "$save" ]]; then
+    save=$(basename "${uri%%\?*}")
+  fi
+  if (( ${+commands[aria2c]} )); then
+    aria2c --max-connection-per-server=4 --continue "$uri" -o "$save"
+  elif (( ${+commands[axel]} )); then
+    axel --num-connections=4 --alternate "$uri" -o "$save"
+  elif (( ${+commands[wget]} )); then
+    wget --continue --progress=bar -O "$save" "$uri"
+  elif (( ${+commands[curl]} )); then
+    curl --continue-at - --location --progress-bar --remote-name --remote-time "$uri" -o "$save"
+  else
+    printf "No suitable download tool found.\n"
+  fi
+}
 
-if [[ ! -e ${ZDATADIR}/history-search-multi-word ]]; then
-  mkdir -p ${ZDATADIR}/history-search-multi-word
-  git clone --depth=1 ${GH_MIRROR}/zdharma-continuum/history-search-multi-word ${ZDATADIR}/history-search-multi-word
-  zcompile-many ${ZDATADIR}/history-search-multi-word/history-search-multi-word.plugin.zsh
-fi
+## smart cd function, allows switching to /etc when running 'cd /etc/fstab'
+cd() {
+  if (( ${#argv} == 1 )) && [[ -f ${1} ]]; then
+    [[ ! -e ${1:h} ]] && return 1
+    print "Correcting ${1} to ${1:h}"
+    builtin cd ${1:h}
+  else
+    builtin cd "$@"
+  fi
+}
 
-if [[ ! -e ${ZDATADIR}/zsh-autosuggestions ]]; then
-  mkdir -p ${ZDATADIR}/zsh-autosuggestions
-  git clone --depth=1 ${GH_MIRROR}/zsh-users/zsh-autosuggestions.git ${ZDATADIR}/zsh-autosuggestions
-  zcompile-many ${ZDATADIR}/zsh-autosuggestions/{zsh-autosuggestions.zsh,src/**/*.zsh}
-fi
-
-if [[ ! -e ${ZDATADIR}/zsh-z ]]; then
-  mkdir -p ${ZDATADIR}/zsh-z
-  git clone --depth=1 ${GH_MIRROR}/agkozak/zsh-z.git ${ZDATADIR}/zsh-z
-  zcompile-many ${ZDATADIR}/zsh-z/{zsh-z.plugin.zsh,_zshz}
-fi
-
-if [[ ! -e ${ZDATADIR}/zsh-completions ]]; then
-  mkdir -p ${ZDATADIR}/zsh-completions
-  git clone --depth=1 ${GH_MIRROR}/zsh-users/zsh-completions.git ${ZDATADIR}/zsh-completions
-  zcompile-many ${ZDATADIR}/zsh-completions/{zsh-completions.plugin.zsh,src/*}
-fi
-
-if [[ ! -e ${ZDATADIR}/fzf-tab ]]; then
-  mkdir -p ${ZDATADIR}/fzf-tab
-  git clone --depth=1 ${GH_MIRROR}/Aloxaf/fzf-tab.git ${ZDATADIR}/fzf-tab
-  zcompile-many ${ZDATADIR}/fzf-tab/{fzf-tab.*,lib/**/*.zsh}
-fi
-
-# Load and initialize the completion system
-source ${ZDATADIR}/zsh-completions/zsh-completions.plugin.zsh
-autoload -Uz compinit && compinit -C -d ${ZCACHEDIR}/zcompdump
-[[ ${ZCACHEDIR}/zcompdump.zwc -nt ${ZCACHEDIR}/zcompdump ]] || zcompile ${ZCACHEDIR}/zcompdump
-
-unfunction zcompile-many
-
-ZSHZ_DATA="${ZCACHEDIR}/zshz.dat"
-zsh-defer source ${ZDATADIR}/zsh-z/zsh-z.plugin.zsh
-zsh-defer source ${ZDATADIR}/fzf-tab/fzf-tab.plugin.zsh
-ZSH_AUTOSUGGEST_MANUAL_REBIND=1
-ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-ZSH_AUTOSUGGEST_STRATEGY=(history completion)
-zsh-defer source ${ZDATADIR}/zsh-autosuggestions/zsh-autosuggestions.zsh
-typeset -gA FAST_HIGHLIGHT
-FAST_HIGHLIGHT[git-cmsg-len]=100
-zsh-defer source ${ZDATADIR}/fast-syntax-highlighting/fast-syntax-highlighting.plugin.zsh
-zsh-defer source ${ZDATADIR}/history-search-multi-word/history-search-multi-word.plugin.zsh
-zsh-defer -c 'unset RPS1'
+reload() {
+  # clear
+  exec "${SHELL}" "$@"
+}
 
 #
-### End of Plugins
+### End of Func
 #
 
 ############
-### Misc
+### Keybindings
 ############
 
 ## Editor and input char assignment
@@ -341,17 +456,17 @@ bindkey ${key_info[ControlRight]} forward-word
 bindkey ${key_info[Backspace]} backward-delete-char
 bindkey ${key_info[Delete]} delete-char
 
-if [[ -n ${key_info[Home]} ]] bindkey ${key_info[Home]} beginning-of-line
-if [[ -n ${key_info[End]} ]] bindkey ${key_info[End]} end-of-line
+bindkey ${key_info[Home]} beginning-of-line
+bindkey ${key_info[End]} end-of-line
 
-if [[ -n ${key_info[PageUp]} ]] bindkey ${key_info[PageUp]} up-line-or-history
-if [[ -n ${key_info[PageDown]} ]] bindkey ${key_info[PageDown]} down-line-or-history
+bindkey ${key_info[PageUp]} up-line-or-history
+bindkey ${key_info[PageDown]} down-line-or-history
 
-if [[ -n ${key_info[BackTab]} ]] bindkey ${key_info[BackTab]} reverse-menu-complete
-if [[ -n ${key_info[Insert]} ]] bindkey ${key_info[Insert]} overwrite-mode
+bindkey ${key_info[BackTab]} reverse-menu-complete
+bindkey ${key_info[Insert]} overwrite-mode
 
-if [[ -n ${key_info[Left]} ]] bindkey ${key_info[Left]} backward-char
-if [[ -n ${key_info[Right]} ]] bindkey ${key_info[Right]} forward-char
+bindkey ${key_info[Left]} backward-char
+bindkey ${key_info[Right]} forward-char
 
 # Expandpace.
 bindkey ' ' magic-space
@@ -360,140 +475,133 @@ bindkey ' ' magic-space
 autoload -Uz bracketed-paste-url-magic && zle -N bracketed-paste bracketed-paste-url-magic
 autoload -Uz url-quote-magic && zle -N self-insert url-quote-magic
 
-# <Ctrl-r> to history-search-multi-word
-bindkey "${key_info[Control]}r" history-search-multi-word
-
 # <Ctrl-e> to edit command-line in EDITOR
 autoload -Uz edit-command-line && zle -N edit-command-line && \
   bindkey "${key_info[Control]}e" edit-command-line
 
+# [Esc] [Esc] to sudo-command-line
+zle -N sudo-command-line && \
+  bindkey "${key_info[Escape]}${key_info[Escape]}" sudo-command-line
+
+# <Ctrl-r> to history-fuzzy-search
+# zle -N history-fuzzy-search && \
+#   bindkey "${key_info[Control]}r" history-fuzzy-search
+
+# <Ctrl-t> to file-fuzzy-find
+zle -N file-fuzzy-find && \
+  bindkey "${key_info[Control]}t" file-fuzzy-find
+
+_exit_zsh() { exit; }
+zle -N _exit_zsh && \
+  bindkey "${key_info[Control]}d" _exit_zsh
+
+#
+### End of Keybindings
+#
+
+############
+### Misc
+############
+
 # prompt optional
 zstyle ':asciiship:' git-info true
-zstyle ':asciiship:' shorten-path true
+zstyle ':asciiship:' dir-short true
 
-# fzf-tab optional
-zstyle -d ':completion:*' format
-zstyle ':completion:*:descriptions' format '[%d]'
-zstyle ':completion:*:git-checkout:*' sort false
-zstyle ':completion:*' menu no
-zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
+# Include user-specified configs.
+if [ ! -d "${ZSHDDIR}" ]; then
+  mkdir -p "${ZSHDDIR}" && printf "# Put your user-specified config here.\n" > "${ZSHDDIR}/example.zsh"
+fi
+
+for _zshd in $(command ls -A ${ZSHDDIR}/^*.(z)sh$); do
+  . "${_zshd}"
+done
 
 #
 ### End of Misc
 #
 
 ############
-### Func
+### Plugins
 ############
 
-## sudo or doas will be inserted before the command
-sudo-command-line() {
-  [[ -z $BUFFER ]] && zle up-history
+GH_MIRROR="https://github.com"
 
-  if (( $+commands[doas] )) ; then
-    local cmd="doas "
-  else
-    local cmd="sudo "
-  fi
-
-  if [[ ${BUFFER} == ${cmd}* ]]; then
-    CURSOR=$(( CURSOR-${#cmd} ))
-    BUFFER="${BUFFER#$cmd}"
-  else
-    BUFFER="${cmd}${BUFFER}"
-    CURSOR=$(( CURSOR+${#cmd} ))
-  fi
-  zle reset-prompt
-}
-zle -N sudo-command-line
-# Defined shortcut keys: [Esc] [Esc]
-bindkey "${key_info[Escape]}${key_info[Escape]}" sudo-command-line
-
-## File Download
-get() {
-  local uri="$1"
-  local save="$2"
-
-  if (( ${+commands[aria2c]} )); then
-    aria2c --max-connection-per-server=5 --continue "$uri" -o "$save"
-  elif (( ${+commands[axel]} )); then
-    axel --num-connections=5 --alternate "$uri" -o "$save"
-  elif (( ${+commands[wget]} )); then
-    wget --continue --progress=bar --timestamping -O "$save" "$uri"
-  elif (( ${+commands[curl]} )); then
-    curl --continue-at - --location --progress-bar --remote-name --remote-time "$uri" -o "$save"
-  else
-    echo "No suitable download tool found."
+function clone_and_compile() {
+  local repo_name=$1
+  local repo_url=$2
+  if [[ ! -e "${ZPLUGINDIR}/${repo_name}" ]]; then
+    printf "Installing %s ...\n" "${repo_name}"
+    command mkdir -p "${ZPLUGINDIR}/${repo_name}"
+    git clone --quiet --depth=1 "${GH_MIRROR}/${repo_url}" "${ZPLUGINDIR}/${repo_name}"
+    find "${ZPLUGINDIR}/${repo_name}/" -type f -name "*.zsh" -exec zsh -c "zcompile -R -- {}.zwc {} " \;
+    printf "Installation %s ... completed.\n" "${repo_name}"
   fi
 }
 
-## smart cd function, allows switching to /etc when running 'cd /etc/fstab'
-cd() {
-  if (( ${#argv} == 1 )) && [[ -f ${1} ]]; then
-    [[ ! -e ${1:h} ]] && return 1
-    print "Correcting ${1} to ${1:h}"
-    builtin cd ${1:h}
-  else
-    builtin cd "$@"
+function clone_and_compile_x() {
+  local repo_name="plugin"
+  local repo_url="7a72/zshrc"
+  if [[ ! -e "${ZPLUGINDIR}" ]]; then
+    printf "Installing %s ...\n" "${repo_name}"
+    command mkdir -p "${ZPLUGINDIR}"
+    git clone --quiet --recursive --branch=plugin --depth=1 "${GH_MIRROR}/${repo_url}" "${ZPLUGINDIR}"
+    find "${ZPLUGINDIR}/" -type f -name "*.zsh" -exec zsh -c "zcompile -R -- {}.zwc {} " \;
+    printf "Installation %s ... completed.\n" "${repo_name}"
   fi
 }
 
-reload() {
-  # clear
-  exec "${SHELL}" "$@"
+clone_and_compile_x
+
+# clone_and_compile "zsh-z"                    "agkozak/zsh-z"
+# clone_and_compile "zsh-completions"          "zsh-users/zsh-completions"
+# clone_and_compile "completion"               "zimfw/completion"
+# clone_and_compile "fzf-tab"                  "Aloxaf/fzf-tab"
+# clone_and_compile "zsh-autosuggestions"      "zsh-users/zsh-autosuggestions"
+# clone_and_compile "fast-syntax-highlighting" "zdharma-continuum/fast-syntax-highlighting"
+
+function source () {
+  [[ "$1.zwc" -nt $1 ]] || zcompile $1
+  builtin source $@
 }
 
-exit_zsh() { exit }
-zle -N exit_zsh
-bindkey "${key_info[Control]}d" exit_zsh
+function . () {
+  [[ "$1.zwc" -nt $1 ]] || zcompile $1
+  builtin . $@
+}
+
+fpath+="${ZPLUGINDIR}/zsh-completions/src"
+
+ZSHZ_DATA="${ZCHCHEDIR}/.z.dat"
+source "${ZPLUGINDIR}/zsh-z/zsh-z.plugin.zsh"
+
+zstyle ':completion::complete:*' cache-path "${ZCACHEDIR}/zcompcache"
+zstyle ':zim:completion' dumpfile "${ZCACHEDIR}/zcompdump"
+zstyle ':zim:glob' case-sensitivity sensitive
+source "${ZPLUGINDIR}/completion/init.zsh"
+
+zstyle -d ':completion:*' format
+zstyle ':completion:*:descriptions' format '[%d]'
+zstyle ':completion:*:git-checkout:*' sort false
+zstyle ':completion:*' menu no
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+source "${ZPLUGINDIR}/fzf-tab/fzf-tab.zsh"
+
+ZSH_AUTOSUGGEST_MANUAL_REBIND=1
+ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
+ZSH_AUTOSUGGEST_STRATEGY=(completion)
+ZSH_AUTOSUGGEST_HISTORY_IGNORE="(cd *|ls *|git add *)"
+source "${ZPLUGINDIR}/zsh-autosuggestions/zsh-autosuggestions.zsh"
+
+source "${ZPLUGINDIR}/fast-syntax-highlighting/fast-syntax-highlighting.plugin.zsh"
+
+source "${ZPLUGINDIR}/atuin/atuin.plugin.zsh"
+
+unset RPS1
+
+unfunction clone_and_compile source .
 
 #
-### End of Func
+### End of Plugins
 #
-
-############
-### Aliases
-############
-
-alias cp='cp -iv --reflink=auto'
-alias rcp='rsync -v --progress'
-alias rmv='rsync -v --progress --remove-source-files'
-alias mv='mv -iv'
-alias rm='rm -iv'
-alias rmdir='rmdir -v'
-alias ln='ln -v'
-alias chmod="chmod -c"
-alias chown="chown -c"
-alias mkdir="mkdir -v"
-alias grep='grep --colour=auto'
-alias egrep='egrep --colour=auto'
-
-if (( $+commands[eza] )); then
-  alias ls='command eza --color=auto --sort=Name --classify --group-directories-first --time-style=long-iso --group'
-  alias l='ls'
-  alias la='ls -a'
-  alias lh='ls --all --header --long'
-  alias ll='lh'
-else
-  alias ls='command ls -C --color=auto --human-readable --classify --group-directories-first --time-style=+%Y-%m-%d\ %H:%M --quoting-style=literal'
-  alias l='ls'
-  alias la='ls -A'
-  alias lh='la -l'
-  alias ll='lh'
-fi
-
-#
-### End of Aliases
-#
-
-# Include user-specified configs.
-if [ ! -d "${ZSHDDIR}" ]; then
-    mkdir -p "${ZSHDDIR}" && echo "# Put your user-specified config here." > "${ZSHDDIR}/example.zsh"
-fi
-
-for zshd in $(ls -A ${ZSHDDIR}/^*.(z)sh$); do
-  . "${zshd}"
-done
 
 ##### end
