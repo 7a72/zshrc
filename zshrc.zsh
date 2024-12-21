@@ -571,7 +571,7 @@ function . () {
 
 fpath+="${ZPLUGINDIR}/zsh-completions/src"
 
-ZSHZ_DATA="${ZCHCHEDIR}/.z.dat"
+ZSHZ_DATA="${ZCACHEDIR}/.z.dat"
 source "${ZPLUGINDIR}/zsh-z/zsh-z.plugin.zsh"
 
 zstyle ':completion::complete:*' cache-path "${ZCACHEDIR}/zcompcache"
