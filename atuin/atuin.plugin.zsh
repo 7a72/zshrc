@@ -23,42 +23,41 @@ _sql_escape() {
 _zsh_autosuggest_strategy_atuin() {
     emulate -L zsh
 
-    local reply=$(sqlite3 "${HOME}/.local/share/atuin/history.db" "
-        SELECT command
-        FROM (
-            SELECT h1.command
-            FROM history h1, history h2
-            WHERE h1.ROWID = h2.ROWID + 1
-                AND h1.session = h2.session
-                AND h2.exit = 0
-                AND h1.command LIKE '$(_sql_escape "$1%")'
-                AND h2.command = '$(_sql_escape "${history[$((HISTCMD-1))]}")' 
-                AND h1.cwd = '$(_sql_escape "$PWD")'
-            ORDER BY h1.timestamp DESC
-            LIMIT 1
-        )
-        UNION ALL
-        SELECT command
-        FROM (
-            SELECT command
-            FROM history
-            WHERE cwd = '$(_sql_escape "$PWD")' AND command LIKE '$(_sql_escape "$1%")'
-            ORDER BY timestamp DESC
-            LIMIT 1
-        )
-        UNION ALL
-        SELECT command
-        FROM (
-            SELECT command
-            FROM history
-            WHERE command LIKE '$(_sql_escape "$1%")'
-            ORDER BY timestamp DESC
-            LIMIT 1
-        )
-        LIMIT 1
-    ")
-
     if [[ -f "${HOME}/.local/share/atuin/history.db" ]] && (( ${+commands[sqlite3]} )); then
+        local reply=$(sqlite3 "${HOME}/.local/share/atuin/history.db" "
+            SELECT command
+            FROM (
+                SELECT h1.command
+                FROM history h1, history h2
+                WHERE h1.ROWID = h2.ROWID + 1
+                    AND h1.session = h2.session
+                    AND h2.exit = 0
+                    AND h1.command LIKE '$(_sql_escape "$1%")'
+                    AND h2.command = '$(_sql_escape "${history[$((HISTCMD-1))]}")' 
+                    AND h1.cwd = '$(_sql_escape "$PWD")'
+                ORDER BY h1.timestamp DESC
+                LIMIT 1
+            )
+            UNION ALL
+            SELECT command
+            FROM (
+                SELECT command
+                FROM history
+                WHERE cwd = '$(_sql_escape "$PWD")' AND command LIKE '$(_sql_escape "$1%")'
+                ORDER BY timestamp DESC
+                LIMIT 1
+            )
+            UNION ALL
+            SELECT command
+            FROM (
+                SELECT command
+                FROM history
+                WHERE command LIKE '$(_sql_escape "$1%")'
+                ORDER BY timestamp DESC
+                LIMIT 1
+            )
+            LIMIT 1
+        ")
         typeset -g suggestion=$reply
     else
         suggestion=$(ATUIN_QUERY="$1" atuin search --cmd-only --limit 1 --search-mode prefix)
