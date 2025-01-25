@@ -58,7 +58,12 @@ _zsh_autosuggest_strategy_atuin() {
         LIMIT 1
     ")
 
-    typeset -g suggestion=$reply
+    if [[ -f "${HOME}/.local/share/atuin/history.db" ]] && (( ${+commands[sqlite3]} )); then
+        typeset -g suggestion=$reply
+    else
+        suggestion=$(ATUIN_QUERY="$1" atuin search --cmd-only --limit 1 --search-mode prefix)
+    fi
+
 }
 
 if [ -n "${ZSH_AUTOSUGGEST_STRATEGY:-}" ]; then
