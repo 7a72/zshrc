@@ -500,27 +500,6 @@ zle -N _exit_zsh && \
 #
 
 ############
-### Misc
-############
-
-# prompt optional
-zstyle ':asciiship:' git-info true
-zstyle ':asciiship:' dir-short true
-
-# Include user-specified configs.
-if [ ! -d "${ZSHDDIR}" ]; then
-  mkdir -p "${ZSHDDIR}" && printf "# Put your user-specified config here.\n" > "${ZSHDDIR}/example.zsh"
-fi
-
-for _zshd in $(command ls -A ${ZSHDDIR}/^*.(z)sh$); do
-  . "${_zshd}"
-done
-
-#
-### End of Misc
-#
-
-############
 ### Plugins
 ############
 
@@ -600,10 +579,31 @@ fi
 
 unset RPS1
 
-unfunction clone_and_compile source .
+unfunction clone_and_compile clone_and_compile_x source .
 
 #
 ### End of Plugins
+#
+
+############
+### Misc
+############
+
+# prompt optional
+zstyle ':asciiship:' git-info true
+zstyle ':asciiship:' dir-short true
+
+# Include user-specified configs.
+if [ ! -d "${ZSHDDIR}" ]; then
+  mkdir -p "${ZSHDDIR}" && printf "# Put your user-specified config here.\n" > "${ZSHDDIR}/example.zsh"
+fi
+
+for _zshd in $(command ls -A ${ZSHDDIR}/^*.(z)sh$); do
+  . "${_zshd}"
+done
+
+#
+### End of Misc
 #
 
 ##### end
