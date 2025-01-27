@@ -18,7 +18,17 @@ ZPLUGINDIR="${ZDATADIR}/plugins"
 ZCACHEDIR="${ZDATADIR}/cache"
 [ -d "${ZCACHEDIR}" ] || mkdir -p "${ZCACHEDIR}"
 
-[[ ":$PATH:" == *":$HOME/bin:"* ]] || export PATH="${HOME}/bin:$PATH"
+#[[ ":$PATH:" == *":$HOME/bin:"* ]] || export PATH="${HOME}/bin:$PATH"
+
+_custom_path=(
+  "$HOME/bin"       "$HOME/.local/bin"
+  "/usr/local/bin"  "/usr/bin"
+  "/usr/local/sbin" "/usr/sbin"
+  $path
+)
+_custom_path=(${(u)_custom_path})
+path=($^_custom_path(N))
+unset _custom_path
 
 if [[ $(tty) == /dev/tty* ]] ; then
   export LANG=C.UTF-8
@@ -32,9 +42,8 @@ fi
 
 if [[ -z "${EDITOR}" ]]; then
   for _editor in helix hx nvim vim nano; do
-    if command -v "${_editor}" &> /dev/null; then
+    if (( ${+commands[${_editor}]} )); then
       export EDITOR="${_editor}"
-      # export VISUAL="${EDITOR}"
       break
     fi
   done
@@ -82,18 +91,16 @@ setopt no_hup
 # I/O
 setopt interactive_comments
 setopt no_clobber
+setopt rc_quotes
 
 # History
 HISTFILE="${ZCACHEDIR}/.zsh_history"
 HISTSIZE='261120'
 SAVEHIST='261120'
-# setopt append_history
-# setopt extended_history
 setopt inc_append_history
-# setopt hist_expire_dups_first
-setopt hist_ignore_all_dups
+setopt hist_save_no_dups
+setopt hist_ignore_dups
 setopt hist_ignore_space
-# setopt hist_find_no_dups
 setopt hist_verify
 setopt share_history
 
@@ -118,12 +125,22 @@ alias mkdir="mkdir -v"
 alias grep='grep --colour=auto'
 alias egrep='egrep --colour=auto'
 
+if (( ${+commands[bat]} )); then
+  alias cat='bat'
+elif (( ${+commands[batcat]} )); then
+  alias cat='batcat'
+  alias bat='batcat'
+fi
+
 if (( ${+commands[eza]} )); then
   alias ls='command eza --color=auto --sort=Name --classify --group-directories-first --time-style=long-iso --group'
   alias l='ls'
   alias la='ls -a'
   alias lh='ls --all --header --long'
   alias ll='lh'
+  xtree () {
+    eza -T --color=always "$@" | cat
+  }
 else
   alias ls='command ls -C --color=auto --human-readable --classify --group-directories-first --time-style=+%Y-%m-%d\ %H:%M --quoting-style=literal'
   alias l='ls'
@@ -140,13 +157,19 @@ fi
 
 if (( ${+commands[doas]} )) ; then
   alias s="doas"
-else
+elif (( ${+commands[sudo]} )); then
   alias s="sudo"
 fi
 
 if (( ${+commands[systemctl]} )) ; then
   alias sdctl="systemctl"
 fi
+
+# https://github.com/lilydjwg/dotzsh/blob/master/zshrc
+alias -g NN="*(oc[1])"
+alias -g NNF="*(oc[1].)"
+alias -g NND="*(oc[1]/)"
+alias -g NUL="/dev/null"
 
 #
 ### End of Aliases
@@ -309,15 +332,15 @@ PROMPT='
 ############
 
 ## Modified based on MamoruDS/history-fuzzy-search
-# history-fuzzy-search() {
-#   local preview_extra_cmd='_fetch() { setopt extended_glob && HISTFILE='"$HISTFILE"' && fc -R && print -rNC1 -- ${(v)history[$((${(M)${*}## #<->}))]} } && _fetch {}'
-#   local fuzzy_history=$(fc -lr 0 | fzf +s +m -x --with-nth 2.. --scheme=history --layout=reverse --height=50% --preview-window='bottom:3:wrap' --preview $preview_extra_cmd --query="$BUFFER")
-#   if [ -n "$fuzzy_history" ]; then
-#     BUFFER="${fuzzy_history[@]}"
-#     zle vi-fetch-history -n $BUFFER
-#   fi
-#   zle reset-prompt
-# }
+history-fuzzy-search() {
+  local preview_extra_cmd='_fetch() { setopt extended_glob && HISTFILE='"$HISTFILE"' && fc -R && print -rNC1 -- ${(v)history[$((${(M)${*}## #<->}))]} } && _fetch {}'
+  local fuzzy_history=$(fc -lr 0 | fzf +s +m -x --with-nth 2.. --scheme=history --layout=reverse --height=50% --preview-window='bottom:3:wrap' --preview $preview_extra_cmd --query="$BUFFER")
+  if [ -n "$fuzzy_history" ]; then
+    BUFFER="${fuzzy_history[@]}"
+    zle vi-fetch-history -n $BUFFER
+  fi
+  zle reset-prompt
+}
 
 ## file find
 file-fuzzy-find() {
@@ -342,8 +365,10 @@ sudo-command-line() {
   [[ -z ${BUFFER} ]] && zle up-history
   if (( ${+commands[doas]} )) ; then
     cmd="doas "
-  else
+  elif (( ${+commands[sudo]} )) ; then
     cmd="sudo "
+  else
+    cmd="su - root -c "
   fi
   if [[ ${BUFFER} == ${cmd}* ]]; then
     CURSOR=$(( CURSOR-${#cmd} ))
@@ -414,59 +439,27 @@ fi
 
 # Use human-friendly identifiers.
 zmodload -F zsh/terminfo +b:echoti +p:terminfo
-typeset -gA key_info
-key_info=(
-  Control      '\C-'
-  ControlLeft  '^[[1;5D'
-  ControlRight '^[[1;5C'
-  Escape       '\e'
-  Meta         '\M-'
-  Backspace    '^?'
-  Delete       '^[[3~'
-  BackTab      "${terminfo[kcbt]}"
-  Left         "${terminfo[kcub1]}"
-  Down         "${terminfo[kcud1]}"
-  Right        "${terminfo[kcuf1]}"
-  Up           "${terminfo[kcuu1]}"
-  End          "${terminfo[kend]}"
-  F1           "${terminfo[kf1]}"
-  F2           "${terminfo[kf2]}"
-  F3           "${terminfo[kf3]}"
-  F4           "${terminfo[kf4]}"
-  F5           "${terminfo[kf5]}"
-  F6           "${terminfo[kf6]}"
-  F7           "${terminfo[kf7]}"
-  F8           "${terminfo[kf8]}"
-  F9           "${terminfo[kf9]}"
-  F10          "${terminfo[kf10]}"
-  F11          "${terminfo[kf11]}"
-  F12          "${terminfo[kf12]}"
-  Home         "${terminfo[khome]}"
-  Insert       "${terminfo[kich1]}"
-  PageDown     "${terminfo[knp]}"
-  PageUp       "${terminfo[kpp]}"
-)
 
 # Bind the keys
 bindkey -e
 
-bindkey ${key_info[ControlLeft]} backward-word
-bindkey ${key_info[ControlRight]} forward-word
+bindkey "^[[1;5D" backward-word
+bindkey "^[[1;5C" forward-word
 
-bindkey ${key_info[Backspace]} backward-delete-char
-bindkey ${key_info[Delete]} delete-char
+bindkey "^?" backward-delete-char
+bindkey "^[[3~" delete-char
 
-bindkey ${key_info[Home]} beginning-of-line
-bindkey ${key_info[End]} end-of-line
+bindkey "^[OH" beginning-of-line
+bindkey "^[OF" end-of-line
 
-bindkey ${key_info[PageUp]} up-line-or-history
-bindkey ${key_info[PageDown]} down-line-or-history
+bindkey "^[OA" up-line-or-history
+bindkey "^[OB" down-line-or-history
 
-bindkey ${key_info[BackTab]} reverse-menu-complete
-bindkey ${key_info[Insert]} overwrite-mode
+bindkey "^[[Z" reverse-menu-complete
+bindkey "^[[2~" overwrite-mode
 
-bindkey ${key_info[Left]} backward-char
-bindkey ${key_info[Right]} forward-char
+bindkey "^[OD" backward-char
+bindkey "^[OC" forward-char
 
 # Expandpace.
 bindkey ' ' magic-space
@@ -477,23 +470,24 @@ autoload -Uz url-quote-magic && zle -N self-insert url-quote-magic
 
 # <Ctrl-e> to edit command-line in EDITOR
 autoload -Uz edit-command-line && zle -N edit-command-line && \
-  bindkey "${key_info[Control]}e" edit-command-line
+  bindkey "^E" edit-command-line
 
 # [Esc] [Esc] to sudo-command-line
 zle -N sudo-command-line && \
-  bindkey "${key_info[Escape]}${key_info[Escape]}" sudo-command-line
+  bindkey "\e\e" sudo-command-line
 
+if (( ${+commands[fzf]} )) ; then
 # <Ctrl-r> to history-fuzzy-search
-# zle -N history-fuzzy-search && \
-#   bindkey "${key_info[Control]}r" history-fuzzy-search
-
+  zle -N history-fuzzy-search && \
+    bindkey "^R" history-fuzzy-search
 # <Ctrl-t> to file-fuzzy-find
-zle -N file-fuzzy-find && \
-  bindkey "${key_info[Control]}t" file-fuzzy-find
+  zle -N file-fuzzy-find && \
+    bindkey "^T" file-fuzzy-find
+fi
 
 _exit_zsh() { exit; }
 zle -N _exit_zsh && \
-  bindkey "${key_info[Control]}d" _exit_zsh
+  bindkey "^D" _exit_zsh
 
 #
 ### End of Keybindings
@@ -511,7 +505,7 @@ function clone_and_compile() {
   if [[ ! -e "${ZPLUGINDIR}/${repo_name}" ]]; then
     printf "Installing %s ...\n" "${repo_name}"
     command mkdir -p "${ZPLUGINDIR}/${repo_name}"
-    git clone --quiet --depth=1 "${GH_MIRROR}/${repo_url}" "${ZPLUGINDIR}/${repo_name}"
+    git clone --quiet --depth=1 "${GH_MIRROR}/${repo_url}" "${ZPLUGINDIR}/${repo_name}" --recurse-submodules
     find "${ZPLUGINDIR}/${repo_name}/" -type f -name "*.zsh" -exec zsh -c "zcompile -R -- {}.zwc {} " \;
     printf "Installation %s ... completed.\n" "${repo_name}"
   fi
@@ -563,7 +557,9 @@ zstyle ':completion:*:descriptions' format '[%d]'
 zstyle ':completion:*:git-checkout:*' sort false
 zstyle ':completion:*' menu no
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
-source "${ZPLUGINDIR}/fzf-tab/fzf-tab.zsh"
+if (( ${+commands[fzf]} )) ; then
+  source "${ZPLUGINDIR}/fzf-tab/fzf-tab.zsh"
+fi
 
 ZSH_AUTOSUGGEST_MANUAL_REBIND=1
 ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
